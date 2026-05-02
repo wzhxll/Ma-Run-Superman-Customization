@@ -754,12 +754,12 @@ WindUI:Popup({
 
 local Window = WindUI:CreateWindow({
     Title = G.WindowTitle,
-    Icon = "https://chaton-images.s3.us-east-2.amazonaws.com/TVqsXZIE7OUmEhRi60F9GVlr7L1TvbpB3ne3ZKrXNd5zz49w2CLTu8vYcfmaSNVz_1009x1180x948388.png",
+    Icon = "https://...",
     Author = G.WindowAuthor,
     Folder = "WindUI_Example",
     Size = UDim2.fromOffset(650, 450),
     Theme = "Indigo",
-    Background = "https://chaton-images.s3.us-east-2.amazonaws.com/1wXChVOd7zROLvHhCUkWeUu4MCc40cVOgd4uzeCg9WU5mAHPPSpAOwI0N1f9IIE4_1147x747x57511.jpeg",   -- 背景图链接
+    Background = "https://chaton-images.s3.us-east-2.amazonaws.com/1wXChVOd7zROLvHhCUkWeUu4MCc40cVOgd4uzeCg9WU5mAHPPSpAOwI0N1f9IIE4_1147x747x57511.jpeg",
     User = {
         Enabled = true,
         Name = "马润超人",
@@ -776,13 +776,15 @@ local Window = WindUI:CreateWindow({
     ScrollBarEnabled = true
 })
 
--- 如果上面的 Background 无效，可以尝试下面这行（二选一）
--- Window.BackgroundImage = "https://chaton-images.s3.us-east-2.amazonaws.com/1wXChVOd7zROLvHhCUkWeUu4MCc40cVOgd4uzeCg9WU5mAHPPSpAOwI0N1f9IIE4_1147x747x57511.jpeg"
+-- 这里添加背景图透明度代码
+Window:SetBackgroundImageTransparency(0.4)   -- 数值 0~1，0为完全不透明，1为完全透明
 
 Window:Tag({
     Title = "马润定制",
     Color = Color3.fromHex("#30ff6a")
 })
+
+-- 其余代码保持不变...
 
 Window:CreateTopbarButton("theme-switcher", "moon", function()
     WindUI:SetTheme(WindUI:GetCurrentTheme() == "Indigo" and "Dark" or "Indigo")
@@ -1597,100 +1599,146 @@ BrushTab:Button({
 })
 
 -- ==================== 杀戮光环 ====================
--- 以下不使用巨型 local 声明，直接赋值（克服寄存器限制）
 KillSection = Window:Section({ Title = G.SectionKill, Opened = false })
-KillTab = KillSection:Tab({ Title = G.TabKill, Icon = "zap" })
+KillTab = KillSection:Tab({ Title = G.TabKill, Icon = "https://chaton-images.s3.us-east-2.amazonaws.com/TVqsXZIE7OUmEhRi60F9GVlr7L1TvbpB3ne3ZKrXNd5zz49w2CLTu8vYcfmaSNVz_1009x1180x948388.png" })
 
--- ==================== 高频杀戮光环（脉冲版） ====================
--- 每运行1秒，自动关闭0.1秒，然后重新开启，循环直到用户关闭开关
-
-L.attackBarrelEnabled = false
-L.auraEnabled = false
-L.attackThread = nil
-L.attackCount = 2          -- 每轮攻击最近的僵尸数量（滑块控制）
-L.displayRange = 45        -- 显示距离（滑块）
-L.highFreqPulseActive = false   -- 脉冲循环标志
-L.highFreqPulseThread = nil     -- 脉冲线程
-
--- 获取实际攻击距离（原脚本逻辑）
-getActualRange = function()
-    return L.displayRange * (25 / 45)
+-- ==================== 多选下拉框：控制杀戮光环攻击的僵尸类型 ====================
+local zombieTypeNames = {
+    Barrel   = "自爆",
+    Axe      = "斧头僵尸",
+    Eye      = "红眼",
+    Sword    = "胸甲骑兵",
+    FTorso   = "提灯人",
+    Normal   = "山伯乐"
+}
+-- 默认选中除自爆外的所有类型
+local defaultSelected = {}
+for typeKey, name in pairs(zombieTypeNames) do
+    if typeKey ~= "Barrel" then
+        table.insert(defaultSelected, name)
+    end
+end
+-- 初始化选中表（Barrel 键未被设置，即为 nil，表示不攻击自爆）
+L.selectedZombieTypes = {}
+for _, label in ipairs(defaultSelected) do
+    for k, v in pairs(zombieTypeNames) do
+        if v == label then
+            L.selectedZombieTypes[k] = true
+            break
+        end
+    end
 end
 
--- 获取手持近战武器
+KillTab:Dropdown({
+    Title = "攻击僵尸类型",
+    Desc = "选择攻击的僵尸类型",
+    Values = {"自爆", "斧头僵尸", "红眼", "胸甲骑兵", "提灯人", "山伯乐"},
+    Multi = true,
+    Default = defaultSelected,
+    Callback = function(selected)
+        L.selectedZombieTypes = {}
+        for _, label in ipairs(selected) do
+            for typeKey, displayName in pairs(zombieTypeNames) do
+                if displayName == label then
+                    L.selectedZombieTypes[typeKey] = true
+                    break
+                end
+            end
+        end
+    end
+})
+
+KillTab:Divider()
+
+-- ==================== 通用工具函数 ====================
+-- 判断僵尸是否为自爆（直接根据部件或属性，最可靠）
+function L.isBarrelZombie(zombie)
+    if zombie:FindFirstChild("Barrel") then return true end
+    if zombie:GetAttribute("Type") == "Barrel" then return true end
+    return false
+end
+
+-- 判断僵尸类型（用于其他僵尸的识别）
+function L.getZombieTypeKey(zombie)
+    if zombie:FindFirstChild("Axe") then return "Axe"
+    elseif zombie:FindFirstChild("Eye") then return "Eye"
+    elseif zombie:FindFirstChild("Sword") then return "Sword"
+    elseif zombie:FindFirstChild("FTorso") then return "FTorso"
+    else return "Normal" end
+end
+
+-- 核心检查：如果僵尸是自爆，则根据 L.selectedZombieTypes["Barrel"] 决定是否攻击；否则根据其他类型
+function L.isZombieAttackAllowed(zombie)
+    if L.isBarrelZombie(zombie) then
+        -- 自爆：只有当下拉框中勾选了“自爆”才允许攻击，否则绝对禁止
+        return L.selectedZombieTypes["Barrel"] == true
+    else
+        local typeKey = L.getZombieTypeKey(zombie)
+        return L.selectedZombieTypes[typeKey] == true
+    end
+end
+
 function L.getHeldMelee()
     local char = lp.Character
     if not char then return nil end
     for _, item in pairs(char:GetChildren()) do
-        if item:IsA("Tool") and item:GetAttribute("Melee") then return item end
+        if item:IsA("Tool") and item:GetAttribute("Melee") then
+            return item
+        end
     end
     return nil
 end
 
--- 计算到僵尸的距离
-function L.distanceToZombie(zombie)
-    local char = lp.Character
-    if not char then return math.huge end
-    local myRoot = char:FindFirstChild("HumanoidRootPart")
-    if not myRoot then return math.huge end
-    local targetRoot = zombie:FindFirstChild("HumanoidRootPart")
-    if not targetRoot then return math.huge end
-    return (targetRoot.Position - myRoot.Position).Magnitude
+-- ==================== 高频杀戮光环 ====================
+L.auraEnabled = false
+L.attackThread = nil
+L.attackCount = 2
+L.displayRange = 45
+
+local function getActualRange()
+    return L.displayRange * (25 / 45)
 end
 
--- 攻击单个僵尸一次
-function L.attackZombieOnce(zombie, weapon)
-    if not weapon then return false end
-    if L.distanceToZombie(zombie) > getActualRange() then return false end
-    local remote = weapon:FindFirstChild("RemoteEvent")
-    if not remote then return false end
-    local head = zombie:FindFirstChild("Head")
-    if not head then return false end
-    if weapon.Name == "Axe" and zombie:FindFirstChild("State") and zombie.State.Value ~= "Stunned" then
-        remote:FireServer("BraceBlock")
-        remote:FireServer("StopBraceBlock")
-        remote:FireServer("FeedbackStun", zombie, zombie.HumanoidRootPart.Position)
-    end
-    remote:FireServer("Swing", "Side")
-    remote:FireServer("HitZombie", zombie, head.Position, true)
-    return true
-end
-
--- 杀戮光环核心循环（每轮攻击距离最近的 N 个僵尸）
 function L.attackLoop()
     while L.auraEnabled do
-        local char = lp.Character
-        if char then
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if hum and hum.Health > 0 then
-                local weapon = L.getHeldMelee()
-                if weapon then
-                    -- 收集范围内所有僵尸及其距离
+        local weapon = L.getHeldMelee()
+        if weapon then
+            local char = lp.Character
+            if char then
+                local myRoot = char:FindFirstChild("HumanoidRootPart")
+                if myRoot then
+                    local range = getActualRange()
                     local zombies = {}
                     local folder = workspace:FindFirstChild("Zombies")
                     if folder then
                         for _, z in pairs(folder:GetChildren()) do
                             if z:IsA("Model") and z:FindFirstChild("HumanoidRootPart") then
-                                if not L.attackBarrelEnabled and z:GetAttribute("Type") == "Barrel" then continue end
+                                -- 严格检查：自爆必须勾选才攻击，其他僵尸按类型
+                                if not L.isZombieAttackAllowed(z) then continue end
                                 if z:FindFirstChild("State") and z.State.Value == "Spawn" then continue end
-                                local dist = L.distanceToZombie(z)
-                                if dist <= getActualRange() then
+                                local dist = (z.HumanoidRootPart.Position - myRoot.Position).Magnitude
+                                if dist <= range then
                                     table.insert(zombies, {zombie = z, dist = dist})
                                 end
                             end
                         end
                     end
-                    
-                    table.sort(zombies, function(a, b) return a.dist < b.dist end)
-                    
+                    table.sort(zombies, function(a,b) return a.dist < b.dist end)
                     local toAttack = math.min(L.attackCount, #zombies)
                     for i = 1, toAttack do
-                        L.attackZombieOnce(zombies[i].zombie, weapon)
+                        local remote = weapon:FindFirstChild("RemoteEvent")
+                        if remote then
+                            local head = zombies[i].zombie:FindFirstChild("Head")
+                            if head then
+                                remote:FireServer("Swing", "Side")
+                                remote:FireServer("HitZombie", zombies[i].zombie, head.Position, true)
+                            end
+                        end
                     end
                 end
             end
         end
-        task.wait(0.04)   -- 攻击间隔0.04秒
+        task.wait(0.05)
     end
 end
 
@@ -1708,41 +1756,21 @@ function L.stopAura()
     end
 end
 
--- ==================== UI 控件（脉冲循环：运行1秒，中断0.1秒，重复） ====================
+lp.CharacterAdded:Connect(function()
+    if L.auraEnabled then
+        task.wait(0.5)
+        L.stopAura()
+        task.wait(0.1)
+        L.startAura()
+    end
+end)
+
 KillTab:Toggle({
     Title = G.ToggleAuraHighFreqTitle,
     Desc = G.ToggleAuraHighFreqDesc,
     Value = false,
     Callback = function(state)
-        if state then
-            -- 启动脉冲循环
-            if L.highFreqPulseThread then
-                task.cancel(L.highFreqPulseThread)
-                L.highFreqPulseThread = nil
-            end
-            L.highFreqPulseActive = true
-            L.startAura()   -- 立即开始
-            
-            L.highFreqPulseThread = task.spawn(function()
-                while L.highFreqPulseActive do
-                    task.wait(1)            -- 运行1秒
-                    if not L.highFreqPulseActive then break end
-                    L.stopAura()            -- 关闭
-                    task.wait(0.1)          -- 中断0.1秒
-                    if not L.highFreqPulseActive then break end
-                    L.startAura()           -- 重新开启
-                end
-                L.highFreqPulseThread = nil
-            end)
-        else
-            -- 关闭：停止脉冲、停止光环
-            L.highFreqPulseActive = false
-            if L.highFreqPulseThread then
-                task.cancel(L.highFreqPulseThread)
-                L.highFreqPulseThread = nil
-            end
-            L.stopAura()
-        end
+        if state then L.startAura() else L.stopAura() end
     end
 })
 
@@ -1754,17 +1782,19 @@ KillTab:Slider({
 })
 
 KillTab:Slider({
-    Title = "每轮攻击数量",
-    Desc = "每次轮回攻击距离最近的僵尸数量",
+    Title = "攻击数量",
+    Desc = "攻击僵尸数量",
     Value = { Min = 1, Max = 5, Default = 2 },
     Callback = function(v) L.attackCount = v end
 })
 
 KillTab:Divider()
 
--- 手动杀戮光环
+-- ==================== 手动杀戮光环（动画触发） ====================
 L.killAnimEnabled = false
 L.killAnimConnection = nil
+L.auraRangeManual = 45
+
 ANIM_ATTACK_RANGE = 30
 ANIMATION_CONFIGS = {
     { AnimationId = "rbxassetid://12591932646", ActivationDelay = 0.2 },
@@ -1775,6 +1805,27 @@ ANIMATION_CONFIGS = {
     { AnimationId = "rbxassetid://114385794993502", ActivationDelay = 0.65 },
     { AnimationId = "rbxassetid://12638409326", ActivationDelay = 0.74 }
 }
+
+function L.distanceToZombie(zombie)
+    local char = lp.Character
+    if not char then return math.huge end
+    local myRoot = char:FindFirstChild("HumanoidRootPart")
+    if not myRoot then return math.huge end
+    local zRoot = zombie:FindFirstChild("HumanoidRootPart")
+    if not zRoot then return math.huge end
+    return (zRoot.Position - myRoot.Position).Magnitude
+end
+
+function L.attackZombieOnce(zombie, weapon)
+    if not weapon then return end
+    local remote = weapon:FindFirstChild("RemoteEvent")
+    if not remote then return end
+    local head = zombie:FindFirstChild("Head")
+    if head then
+        remote:FireServer("Swing", "Side")
+        remote:FireServer("HitZombie", zombie, head.Position, true)
+    end
+end
 
 function L.performSingleAnimAttack()
     local character = lp.Character
@@ -1788,12 +1839,8 @@ function L.performSingleAnimAttack()
     if zombiesFolder then
         for _, zombie in pairs(zombiesFolder:GetChildren()) do
             if zombie:IsA("Model") and zombie:FindFirstChild("HumanoidRootPart") then
-                if not L.attackBarrelEnabled and zombie:GetAttribute("Type") == "Barrel" then
-                    continue
-                end
-                if zombie.State and zombie.State.Value == "Spawn" then
-                    continue
-                end
+                if not L.isZombieAttackAllowed(zombie) then continue end
+                if zombie.State and zombie.State.Value == "Spawn" then continue end
                 if L.distanceToZombie(zombie) <= L.auraRangeManual then
                     table.insert(zombiesInRange, zombie)
                 end
@@ -1856,11 +1903,13 @@ KillTab:Toggle({
 })
 
 KillTab:Slider({
-    Title = "攻击距离",
+    Title = "手动攻击距离",
     Desc = "杀戮光环攻击距离",
     Value = { Min = 10, Max = 45, Default = 45 },
     Callback = function(value) L.auraRangeManual = value end
 })
+
+KillTab:Divider()
 
 -- ==================== 刺刀杀戮光环 ====================
 L.bayonetAuraEnabled = false
@@ -1887,6 +1936,7 @@ end
 
 function L.attackZombieWithBayonet(zombie, weapon)
     if not weapon then return false end
+    if not L.isZombieAttackAllowed(zombie) then return false end
     local remote = weapon:FindFirstChild("RemoteEvent")
     if not remote then return false end
     local head = zombie:FindFirstChild("Head")
@@ -1906,12 +1956,8 @@ function L.getSortedZombiesInRange()
     if zombiesFolder then
         for _, zombie in pairs(zombiesFolder:GetChildren()) do
             if zombie:IsA("Model") and zombie:FindFirstChild("HumanoidRootPart") then
-                if not L.attackBarrelEnabled and zombie:GetAttribute("Type") == "Barrel" then
-                    continue
-                end
-                if zombie:FindFirstChild("State") and zombie.State.Value == "Spawn" then
-                    continue
-                end
+                if not L.isZombieAttackAllowed(zombie) then continue end
+                if zombie:FindFirstChild("State") and zombie.State.Value == "Spawn" then continue end
                 local targetRoot = zombie:FindFirstChild("HumanoidRootPart")
                 if targetRoot then
                     local dist = (targetRoot.Position - myRoot.Position).Magnitude
@@ -1937,17 +1983,13 @@ function L.bayonetAttackLoop()
                     local zombies = L.getSortedZombiesInRange()
                     local count = #zombies
                     if count > 0 then
-                        if L.bayonetCurrentIndex > count then
-                            L.bayonetCurrentIndex = 1
-                        end
+                        if L.bayonetCurrentIndex > count then L.bayonetCurrentIndex = 1 end
                         local target = zombies[L.bayonetCurrentIndex]
                         if target then
                             L.attackZombieWithBayonet(target.zombie, weapon)
                         end
                         L.bayonetCurrentIndex = L.bayonetCurrentIndex + 1
-                        if L.bayonetCurrentIndex > count then
-                            L.bayonetCurrentIndex = 1
-                        end
+                        if L.bayonetCurrentIndex > count then L.bayonetCurrentIndex = 1 end
                     end
                 end
             end
@@ -1977,65 +2019,20 @@ KillTab:Toggle({
     Desc = "依旧变成刺刀大牛",
     Value = false,
     Callback = function(state)
-        if state then
-            L.startBayonetAura()
-        else
-            L.stopBayonetAura()
-        end
+        if state then L.startBayonetAura() else L.stopBayonetAura() end
     end
 })
-
-bayonetAutoEquip_e = false
-bayonetAutoEquip_last = 0
-bayonetAutoEquip_conn = nil
-bayonetAutoEquip_run = function()
-    if not bayonetAutoEquip_e then return end
-    if not L.bayonetAuraEnabled then return end
-    if tick()-bayonetAutoEquip_last<0.3 then return end
-    local d=99
-    for _,v in pairs(workspace:GetDescendants()) do
-        if v.Name=="HumanoidRootPart" and v.Parent and v.Parent.Name=="m_Zombie" then
-            local p=lp.Character and lp.Character.HumanoidRootPart
-            if p then d=(v.Position-p.Position).Magnitude end
-            if d<18 then break end
-        end
-    end
-    if d>18 then return end
-    for _,t in pairs(lp.Backpack:GetChildren()) do
-        if t.Name=="Musket" then
-            pcall(function() lp.Character.Humanoid:EquipTool(t) end)
-            bayonetAutoEquip_last=tick()
-            break
-        end
-    end
-end
-KillTab:Toggle({Title="自动装备刺刀",Desc="开启刺刀杀戮光环自动装备刺刀",Value=false,Callback=function(s)
-    bayonetAutoEquip_e=s
-    if s then bayonetAutoEquip_conn=RunService.Heartbeat:Connect(bayonetAutoEquip_run) elseif bayonetAutoEquip_conn then bayonetAutoEquip_conn:Disconnect() end
-end})
 
 KillTab:Slider({
     Title = "刺刀攻击距离",
     Desc = "攻击距离调整",
     Value = { Min = 5, Max = 30, Default = 30 },
-    Callback = function(value)
-        L.bayonetAttackRange = value
-    end
+    Callback = function(value) L.bayonetAttackRange = value end
 })
 
 KillTab:Divider()
-KillTab:Divider()
 
-KillTab:Toggle({
-    Title = G.ToggleAttackBarrelTitle,
-    Desc = G.ToggleAttackBarrelDesc,
-    Value = false,
-    Callback = function(state)
-        L.attackBarrelEnabled = state
-    end
-})
-
--- ==================== 攻击墙后自爆（原储存方式，忽略僵尸和玩家） ====================
+-- ==================== 攻击墙后自爆（完全独立，不受下拉框控制，原样保留） ====================
 L.wallBarrelEnabled = false
 L.wallBarrelSearchRange = 15
 L.wallBarrelAttackRange = 45
@@ -2069,43 +2066,31 @@ function L.isBarrelHidden(zombie)
     local dir = targetPart.Position - origin
     local ray = Ray.new(origin, dir)
     
-    -- 构建忽略列表：所有僵尸模型 + 所有玩家角色
-    local ignoreList = {char}  -- 忽略本地玩家自身
-    -- 忽略所有其他玩家角色
+    local ignoreList = {char}
     for _, pl in ipairs(Players:GetPlayers()) do
-        if pl ~= lp and pl.Character then
-            table.insert(ignoreList, pl.Character)
-        end
+        if pl ~= lp and pl.Character then table.insert(ignoreList, pl.Character) end
     end
-    -- 忽略所有僵尸模型（Zombies文件夹下的）
     local zombiesFolder = workspace:FindFirstChild("Zombies")
     if zombiesFolder then
         for _, z in ipairs(zombiesFolder:GetChildren()) do
-            if z:IsA("Model") then
-                table.insert(ignoreList, z)
-            end
+            if z:IsA("Model") then table.insert(ignoreList, z) end
         end
     end
-    -- 忽略 Camera 文件夹下的僵尸（如果有）
     local cameraFolder = workspace:FindFirstChild("Camera")
     if cameraFolder then
         for _, z in ipairs(cameraFolder:GetChildren()) do
-            if z:IsA("Model") and z.Name == "m_Zombie" then
-                table.insert(ignoreList, z)
-            end
+            if z:IsA("Model") and z.Name == "m_Zombie" then table.insert(ignoreList, z) end
         end
     end
     
     local hit = workspace:FindPartOnRayWithIgnoreList(ray, ignoreList)
-    -- 如果命中物体不是这个自爆本身，则说明被墙体/地形挡住
-    if hit and not hit:IsDescendantOf(zombie) then
-        return true
-    end
+    if hit and not hit:IsDescendantOf(zombie) then return true end
     return false
 end
 
 function L.attackHiddenBarrel(zombie, weapon)
     if not weapon then return false end
+    -- 此功能不受下拉框控制，始终攻击墙后自爆
     local remote = weapon:FindFirstChild("RemoteEvent")
     if not remote then return false end
     local head = zombie:FindFirstChild("Head")
@@ -2189,18 +2174,12 @@ end
 
 KillTab:Toggle({
     Title = "攻击墙后自爆",
-    Desc = "自动攻击墙体后的自爆（无视僵尸和玩家遮挡，只认真实墙壁）",
+    Desc = "自动攻击墙体后的自爆",
     Value = false,
     Callback = function(state)
-        if state then
-            L.startWallBarrel()
-        else
-            L.stopWallBarrel()
-        end
+        if state then L.startWallBarrel() else L.stopWallBarrel() end
     end
 })
-
-KillTab:Divider()
 
 -- ==================== 强制爆头 ====================
 L.headshotEnabled = false
@@ -2368,11 +2347,7 @@ KillTab:Toggle({
     Desc = G.ToggleHeadshotDesc,
     Value = false,
     Callback = function(state)
-        if state then
-            L.enableHeadshot()
-        else
-            L.disableHeadshot()
-        end
+        if state then L.enableHeadshot() else L.disableHeadshot() end
     end
 })
 
