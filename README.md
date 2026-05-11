@@ -356,6 +356,14 @@ local G = {
     ToggleBrightTitle = "亮度提升",
     ToggleBrightDesc = "提高场景亮度",
     ToggleAutoDigTitle = "自动挖雪",
+    ToggleAutoBarrelTitle = "自动打酒桶",
+    ToggleAutoBarrelDesc = "自动攻击酒桶",
+    ToggleAutoWestminsterTitle = "自动打威斯特敏障碍",
+    ToggleAutoWestminsterDesc = "自动攻击威斯特敏路障",
+    ToggleAutoLeipzigBarricadeTitle = "自动打莱比锡木板",
+    ToggleAutoLeipzigBarricadeDesc = "自动攻击莱比锡木板",
+    ToggleAutoCopenhagenGateTitle = "自动打哥本哈根锁",
+    ToggleAutoCopenhagenGateDesc = "自动攻击哥本哈根锁",
     ToggleAutoDigDesc = "自动挖掘雪堆",
     ToggleAutoLogTitle = "自动拿木头",
     ToggleAutoLogDesc = "自动拿木头",
@@ -751,6 +759,8 @@ WindUI:Popup({
         }
     }
 })
+
+
 
 local Window = WindUI:CreateWindow({
     Title = G.WindowTitle,
@@ -1513,6 +1523,76 @@ AutoTab:Toggle({
         else
             if L.autoDoorThread then task.cancel(L.autoDoorThread); L.autoDoorThread = nil end
             L.processingDoors = {}
+        end
+    end
+})
+
+-- 自动打酒桶
+AutoTab:Toggle({
+    Title = G.ToggleAutoBarrelTitle,
+    Desc = G.ToggleAutoBarrelDesc,
+    Value = false,
+    Callback = function(state)
+        if state then
+            L.autoBarrel.Start()
+        else
+            L.autoBarrel.Stop()
+        end
+    end
+})
+
+-- 自动打威斯特敏障碍
+AutoTab:Toggle({
+    Title = G.ToggleAutoWestminsterTitle,
+    Desc = G.ToggleAutoWestminsterDesc,
+    Value = false,
+    Callback = function(state)
+        if state then
+            L.autoWestminster.Start()
+        else
+            L.autoWestminster.Stop()
+        end
+    end
+})
+
+-- 自动打莱比锡木板
+AutoTab:Toggle({
+    Title = G.ToggleAutoLeipzigBarricadeTitle,
+    Desc = G.ToggleAutoLeipzigBarricadeDesc,
+    Value = false,
+    Callback = function(state)
+        if state then
+            L.autoLeipzigBarricade.Start()
+        else
+            L.autoLeipzigBarricade.Stop()
+        end
+    end
+})
+
+-- 自动打哥本哈根锁
+AutoTab:Toggle({
+    Title = G.ToggleAutoCopenhagenGateTitle,
+    Desc = G.ToggleAutoCopenhagenGateDesc,
+    Value = false,
+    Callback = function(state)
+        if state then
+            L.autoCopenhagenGate.Start()
+        else
+            L.autoCopenhagenGate.Stop()
+        end
+    end
+})
+
+-- 自动装填大炮
+AutoTab:Toggle({
+    Title = "自动装填大炮",
+    Desc = "自动装填最近的12磅炮",
+    Value = false,
+    Callback = function(state)
+        if state then
+            L.startAutoCannon()
+        else
+            L.stopAutoCannon()
         end
     end
 })
